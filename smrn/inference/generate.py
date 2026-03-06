@@ -31,7 +31,7 @@ def load_model(ckpt_path: str, device: str = 'cuda' if torch.cuda.is_available()
     """
     print(f"Loading model from {ckpt_path}...")
     
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     config = ckpt['config']
     
     model = SMRN(config)
