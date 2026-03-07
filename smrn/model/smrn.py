@@ -105,6 +105,8 @@ class SelectiveSSM(nn.Module):
         
         # Δ ∈ (0, ∞) via softplus, then project to d_model
         delta = F.softplus(self.dt_proj(delta))  # (batch, seq_len, d_model)
+        # Clamp delta for numerical stability
+        delta = torch.clamp(delta, min=1e-4, max=10.0)
         
         # C projection
         C = self.C_proj(x)  # (batch, seq_len, d_state)
@@ -124,13 +126,20 @@ class SelectiveSSM(nn.Module):
             
             # Discretization: Ã = exp(Δ * A)
             # delta_t: (batch, d_model, 1) * A: (d_model, d_state) -> (batch, d_model, d_state)
-            A_bar = torch.exp(delta_t.unsqueeze(-1) * A.unsqueeze(0))  # (batch, d_model, d_state)
+            dA = delta_t.unsqueeze(-1) * A.unsqueeze(0)
+            dA = torch.clamp(dA, min=-10.0, max=1.0)  # Clamp for stability
+            A_bar = torch.exp(dA)  # (batch, d_model, d_state)
             
             # B̃ = Δ * B
             B_bar = delta_t.unsqueeze(-1) * B_t.unsqueeze(1)  # (batch, d_model, d_state)
+            B_bar = torch.clamp(B_bar, min=-10.0, max=10.0)  # Clamp for stability
             
             # State update: h_t = Ã_t * h_{t-1} + B̃_t * x_t
             h = A_bar * h + B_bar * x_t.unsqueeze(-1)
+            
+            # Check for NaN in state
+            if torch.isnan(h).any():
+                h = torch.nan_to_num(h, nan=0.0)
             
             # Output: y_t = C_t * h_t
             y_t = torch.einsum('bn,bmn->bm', C_t, h)  # (batch, d_model)
@@ -208,10 +217,14 @@ class LinearAttentionPathway(nn.Module):
     def _apply_feature_map(self, x: torch.Tensor) -> torch.Tensor:
         """Apply feature map φ(x)"""
         if self.feature_map is not None:
-            return self.feature_map(x)
+            phi = self.feature_map(x)
         else:
             # Simple ELU(x) + 1 (ensures positive for stability)
-            return F.elu(x) + 1
+            phi = F.elu(x) + 1
+        
+        # Clamp feature map output for numerical stability
+        phi = torch.clamp(phi, min=0.0, max=100.0)
+        return phi
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with linear attention
@@ -247,13 +260,17 @@ class LinearAttentionPathway(nn.Module):
             S = S + torch.einsum('bf,bd->bfd', K_phi_t, V_t)  # (batch, feature_dim, dv)
             Z = Z + K_phi_t  # (batch, feature_dim)
             
+            # Clamp states for numerical stability
+            S = torch.clamp(S, min=-100.0, max=100.0)
+            Z = torch.clamp(Z, min=1e-3, max=1000.0)
+            
             # Recall: γ_t = φ(Q_t) S_t / φ(Q_t) Z_t
             Q_phi_t = Q_phi[:, t, :]  # (batch, feature_dim)
             numerator = torch.einsum('bf,bfd->bd', Q_phi_t, S)  # (batch, dv)
             denominator = torch.einsum('bf,bf->b', Q_phi_t, Z)  # (batch,)
             
-            # Avoid division by zero
-            gamma_t = numerator / (denominator.unsqueeze(-1) + 1e-6)
+            # Avoid division by zero - increased epsilon for stability
+            gamma_t = numerator / (denominator.unsqueeze(-1) + 1e-3)
             outputs.append(gamma_t)
         
         y = torch.stack(outputs, dim=1)  # (batch, seq_len, dv)
@@ -306,8 +323,10 @@ class EntropyGate(nn.Module):
             magnitudes = torch.norm(window, dim=-1)  # (batch, window_len)
             p = F.softmax(magnitudes, dim=-1)  # (batch, window_len)
             
-            # H = -Σ p log₂(p)
-            H = -torch.sum(p * torch.log2(p + 1e-9), dim=-1, keepdim=True)  # (batch, 1)
+            # H = -Σ p log₂(p) - increased epsilon for stability
+            H = -torch.sum(p * torch.log2(p + 1e-4), dim=-1, keepdim=True)  # (batch, 1)
+            # Clamp entropy for numerical stability
+            H = torch.clamp(H, min=0.0, max=10.0)
             entropies.append(H)
         
         return torch.stack(entropies, dim=1)  # (batch, seq_len, 1)
@@ -356,7 +375,9 @@ class SMRNBlock(nn.Module):
         # Component 3: EntropyGate
         self.gate = EntropyGate(config.d_model, config.window_size)
         
-        # Layer normalization
+        # Layer normalization - added for input stability
+        self.norm_ssm = nn.LayerNorm(config.d_model)
+        self.norm_attn = nn.LayerNorm(config.d_model)
         self.norm1 = nn.LayerNorm(config.d_model)
         self.norm2 = nn.LayerNorm(config.d_model)
         
@@ -374,9 +395,12 @@ class SMRNBlock(nn.Module):
         # Store input for residual and entropy computation
         residual = x
         
-        # Parallel pathways
-        y_ssm = self.ssm(x)
-        y_attn = self.attn(x)
+        # Apply LayerNorm before pathways for stability
+        x_normalized = x
+        
+        # Parallel pathways with normalized input
+        y_ssm = self.ssm(self.norm_ssm(x_normalized))
+        y_attn = self.attn(self.norm_attn(x_normalized))
         
         # Entropy-based gating
         if return_gate_values:
@@ -465,10 +489,16 @@ class SMRN(nn.Module):
                 gate_values_list.append(gate_vals)
             else:
                 x = layer(x)
+            
+            # Replace NaN values for numerical stability
+            x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0)
         
         # Output
         x = self.norm_out(x)
         logits = self.lm_head(x)  # (batch, seq_len, vocab_size)
+        
+        # Final NaN check
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=1.0, neginf=-1.0)
         
         if return_gate_values:
             return logits, gate_values_list

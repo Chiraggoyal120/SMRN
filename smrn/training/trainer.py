@@ -174,6 +174,14 @@ class SMRNTrainer:
                         # Overall accuracy
                         acc = (logits.argmax(dim=-1) == targets).float().mean()
             
+            # Check for NaN loss and skip batch if found
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"Warning: NaN/Inf loss detected, skipping batch")
+                continue
+            
+            # Clamp loss for numerical stability
+            loss = torch.clamp(loss, max=100.0)
+            
             # Backward pass
             self.optimizer.zero_grad()
             if self.scaler is not None:
