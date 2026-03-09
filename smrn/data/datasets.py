@@ -183,6 +183,61 @@ class CharLMDataset(Dataset):
         return chunk[:-1], chunk[1:]  # Input and target
 
 
+class WordLMDataset(Dataset):
+    """Dataset 3.5: Word-level Language Modeling with GPT-2 Tokenizer
+    
+    - Uses GPT-2 tokenizer (transformers library)
+    - Accepts local text file path
+    - vocab_size = 50257 (GPT-2 vocabulary)
+    - Chunks text into seq_len windows like CharLMDataset
+    - For fair benchmark comparison with other language models
+    """
+    def __init__(self, text_file: str, seq_len: int = 256, tokenizer_name: str = 'gpt2'):
+        try:
+            from transformers import GPT2Tokenizer
+        except ImportError:
+            raise ImportError("WordLMDataset requires: pip install transformers")
+        
+        self.seq_len = seq_len
+        
+        # Load GPT-2 tokenizer
+        self.tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.vocab_size = len(self.tokenizer)  # 50257 for GPT-2
+        
+        # Read text from file
+        with open(text_file, 'r', encoding='utf-8') as f:
+            text = f.read()
+        
+        # Tokenize entire text
+        tokens = self.tokenizer.encode(text)
+        self.data = torch.tensor(tokens, dtype=torch.long)
+        
+        # Create chunks
+        self.n_chunks = (len(self.data) - 1) // seq_len
+        
+        print(f"WordLMDataset initialized:")
+        print(f"  Text file: {text_file}")
+        print(f"  Tokenizer: {tokenizer_name}")
+        print(f"  Vocab size: {self.vocab_size}")
+        print(f"  Total tokens: {len(self.data):,}")
+        print(f"  Sequence length: {seq_len}")
+        print(f"  Number of chunks: {self.n_chunks:,}")
+    
+    def decode(self, indices: List[int]) -> str:
+        """Decode token indices to text"""
+        return self.tokenizer.decode(indices)
+    
+    def __len__(self) -> int:
+        return self.n_chunks
+    
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        start = idx * self.seq_len
+        end = start + self.seq_len + 1
+        chunk = self.data[start:end]
+        return chunk[:-1], chunk[1:]  # Input and target
+
+
 class WikiTextDataset(Dataset):
     """Dataset 4: WikiText with HuggingFace tokenizer
     
@@ -290,6 +345,34 @@ def get_char_loaders(text: str, seq_len: int = 256, batch_size: int = 64,
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
     
     return train_loader, val_loader, dataset.vocab_size, dataset.char2idx, dataset.idx2char
+
+
+def get_word_loaders(text_file: str, seq_len: int = 256, batch_size: int = 64,
+                     split_ratio: float = 0.9, tokenizer_name: str = 'gpt2'):
+    """Get train/val loaders for word-level LM task with GPT-2 tokenizer
+    
+    Args:
+        text_file: Path to text file
+        seq_len: Sequence length
+        batch_size: Batch size
+        split_ratio: Train/val split ratio
+        tokenizer_name: HuggingFace tokenizer name (default: gpt2)
+    
+    Returns:
+        train_loader, val_loader, vocab_size, tokenizer
+    """
+    dataset = WordLMDataset(text_file, seq_len, tokenizer_name)
+    
+    # Split
+    n_train = int(len(dataset) * split_ratio)
+    train_data, val_data = torch.utils.data.random_split(
+        dataset, [n_train, len(dataset) - n_train]
+    )
+    
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    
+    return train_loader, val_loader, dataset.vocab_size, dataset.tokenizer
 
 
 def get_haystack_loaders(n_samples: int = 1000, vocab_size: int = 512,

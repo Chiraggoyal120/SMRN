@@ -1,0 +1,11 @@
+The history of natural language processing generally started in the 1950s, although work can be found from earlier periods. In 1950, Alan Turing published an article titled "Computing Machinery and Intelligence" which proposed what is now called the Turing test as a criterion of intelligence.
+
+The Georgetown experiment in 1954 involved fully automatic translation of more than sixty Russian sentences into English. The authors claimed that within three or five years, machine translation would be a solved problem. However, real progress was much slower, and after the ALPAC report in 1966, which found that ten years of research had failed to fulfill the expectations, funding for machine translation was dramatically reduced.
+
+Little further research in machine translation was conducted until the late 1980s when the first statistical machine translation systems were developed. Some notably successful natural language processing systems developed in the 1960s were SHRDLU, a natural language system working in restricted "blocks worlds" with restricted vocabularies, and ELIZA, a simulation of a Rogerian psychotherapist, written by Joseph Weizenbaum between 1964 and 1966.
+
+Using natural language processing, computers can analyze text and speech to understand meaning, sentiment, and intent. Modern NLP techniques use machine learning and deep learning to process language at scale. Transformer models like BERT and GPT have revolutionized the field by achieving state-of-the-art results on a wide variety of language tasks.
+
+Deep learning has enabled major breakthroughs in natural language understanding. Neural networks can now generate coherent text, translate between languages, answer questions, and summarize documents. The attention mechanism, introduced in 2017, allows models to focus on relevant parts of the input when making predictions.
+
+Language models are trained on massive amounts of text data from the internet. These models learn statistical patterns in language, including grammar, facts, and reasoning abilities. Fine-tuning pre-trained models on specific tasks has become a standard approach in NLP research and applications.

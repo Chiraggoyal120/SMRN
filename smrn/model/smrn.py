@@ -22,7 +22,7 @@ from einops import rearrange, repeat
 @dataclass
 class SMRNConfig:
     """Configuration for SMRN model"""
-    vocab_size: int
+    vocab_size: int = 50257  # GPT-2 vocab size (default for word-level LM)
     d_model: int = 256
     n_layers: int = 6
     d_state: int = 16  # SSM state dimension

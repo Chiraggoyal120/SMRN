@@ -26,7 +26,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from model.smrn import SMRN, SMRNConfig, SMRNSSMOnly, SMRNAttnOnly
 from data.datasets import (
-    get_recall_loaders, get_char_loaders, get_haystack_loaders,
+    get_recall_loaders, get_char_loaders, get_word_loaders, get_haystack_loaders,
     AssociativeRecallDataset, ListOpsDataset
 )
 
@@ -399,7 +399,9 @@ def main():
     
     # Data config
     parser.add_argument('--n_samples', type=int, default=20000)
-    parser.add_argument('--text_file', type=str, help='Text file for character LM')
+    parser.add_argument('--text_file', type=str, help='Text file for language modeling (char or word level)')
+    parser.add_argument('--tokenizer', type=str, default='gpt2', help='Tokenizer for word-level LM (default: gpt2)')
+    parser.add_argument('--use_char_lm', action='store_true', help='Use character-level LM instead of word-level')
     
     # Other
     parser.add_argument('--save_dir', type=str, default='checkpoints')
@@ -423,13 +425,27 @@ def main():
     elif args.task == 'lm':
         if args.text_file is None:
             raise ValueError("--text_file required for LM task")
-        with open(args.text_file, 'r') as f:
-            text = f.read()
-        train_loader, val_loader, vocab_size, char2idx, idx2char = get_char_loaders(
-            text=text,
-            seq_len=args.seq_len,
-            batch_size=args.batch_size
-        )
+        
+        # Use word-level LM by default (GPT-2 tokenizer), unless --use_char_lm is specified
+        if args.use_char_lm:
+            # Character-level LM
+            with open(args.text_file, 'r') as f:
+                text = f.read()
+            train_loader, val_loader, vocab_size, char2idx, idx2char = get_char_loaders(
+                text=text,
+                seq_len=args.seq_len,
+                batch_size=args.batch_size
+            )
+            print(f"Using character-level LM (vocab_size={vocab_size})")
+        else:
+            # Word-level LM with GPT-2 tokenizer (default)
+            train_loader, val_loader, vocab_size, tokenizer = get_word_loaders(
+                text_file=args.text_file,
+                seq_len=args.seq_len,
+                batch_size=args.batch_size,
+                tokenizer_name=args.tokenizer
+            )
+            print(f"Using word-level LM with {args.tokenizer} tokenizer (vocab_size={vocab_size})")
     elif args.task == 'haystack':
         train_loader, vocab_size = get_haystack_loaders(
             n_samples=args.n_samples,
