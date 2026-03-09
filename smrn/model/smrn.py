@@ -41,7 +41,7 @@ class SMRNConfig:
     min_lr: float = 1e-5
     weight_decay: float = 0.01
     max_grad_norm: float = 1.0  # For Theorem 4
-    warmup_steps: int = 500
+    warmup_steps: int = 100
     use_amp: bool = True
     
     # Data

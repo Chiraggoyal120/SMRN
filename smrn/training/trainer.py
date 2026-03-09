@@ -209,13 +209,13 @@ class SMRNTrainer:
             # Accumulate metrics
             batch_size = inputs.size(0)
             total_loss += loss.item() * batch_size
-            total_acc += acc.item() * batch_size
+            total_acc += (acc.item() if hasattr(acc, 'item') else float(acc)) * batch_size
             total_samples += batch_size
             
             # Update progress bar
             pbar.set_postfix({
                 'loss': loss.item(),
-                'acc': acc.item(),
+                'acc': acc.item() if hasattr(acc, 'item') else float(acc),
                 'lr': self.optimizer.param_groups[0]['lr']
             })
         
@@ -279,7 +279,7 @@ class SMRNTrainer:
             
             batch_size = inputs.size(0)
             total_loss += loss.item() * batch_size
-            total_acc += acc.item() * batch_size
+            total_acc += (acc.item() if hasattr(acc, 'item') else float(acc)) * batch_size
             total_samples += batch_size
         
         metrics = {
